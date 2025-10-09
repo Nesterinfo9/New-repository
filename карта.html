@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Карта с точками из CSV и линиями метро</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+<style>
+       #map {
+           width: 100%;
+           height: 800px;
+       }
+       #controls {
+           margin-bottom: 20px;
+       }
+</style>
+<style>
+   .leaflet-markercluster-icon {
+       background-color: rgba(0, 0, 0, 0.7) !important; /* Темный фон для улучшения контраста */
+       color: white !important; /* Цвет текста для цифр */
+       border-radius: 50% !important; /* Круглая форма */
+       font-size: 16px !important; /* Размер шрифта */
+       font-weight: bold !important; /* Жирное начертание шрифта */
+   }
+   .leaflet-markercluster-icon span {
+       line-height: 1 !important; /* Высота строки */
+   }
+</style>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.1/MarkerCluster.Default.css" />
+</head>
+<body>
+<h1>Карта с точками из CSV и линиями метро</h1>
+<div id="controls">
+<input type="text" id="csvUrls" placeholder="Вставьте ссылки на CSV-файлы, разделенные запятыми" style="width: 600px;" value="https://raw.githubusercontent.com/Damirinho9/New-repository/main/%D0%9E%D0%B1%D1%81%D0%BB%D0%B5%D0%B4%D0%BE%D0%B2%D0%B0%D0%BD%D0%B8%D1%8F%20%D0%B7%D0%B0%D1%8F%D0%B2%D0%BA%D0%B8.csv, https://raw.githubusercontent.com/Damirinho9/New-repository/main/%D0%B4%D0%B5%D0%BC%D0%BE%D0%BD%D1%82%D0%B0%D0%B6%D0%B8.csv, https://raw.githubusercontent.com/Damirinho9/New-repository/main/%D0%BA%D0%B0%D1%80%D1%82%D0%B0%20%D0%97%D0%B0%D1%8F%D0%B2%D0%BA%D0%B8%20%D0%95%D0%B2%D1%80%D0%BE%D0%BC%D0%BE%D1%81%D1%82%202024.csv, https://raw.githubusercontent.com/Damirinho9/New-repository/main/%D0%BA%D0%B0%D1%80%D1%82%D0%B0%20%D0%97%D0%B0%D1%8F%D0%B2%D0%BA%D0%B8%20%D0%9D%D0%B5%D0%B2%D0%B0%20%D0%A4%D0%B5%D0%BD%D0%B8%D0%BA%D1%81%202024.csv, https://raw.githubusercontent.com/Damirinho9/New-repository/main/%D0%BA%D0%B0%D1%80%D1%82%D0%B0%20%D0%97%D0%B0%D1%8F%D0%B2%D0%BA%D0%B8%20%D0%BE%D1%82%20%D0%BC%D0%B5%D0%BD%D0%B5%D0%B4%D0%B6%D0%B5%D1%80%D0%BE%D0%B2%202024.csv, https://raw.githubusercontent.com/Damirinho9/New-repository/main/%D0%BA%D0%B0%D1%80%D1%82%D0%B0%20%D0%A0%D0%B5%D0%BC%D0%BE%D0%BD%D1%82%20%D0%BF%D0%BE%20%D0%A4%D0%97%D0%A7%202024.csv">
+<button onclick="loadCsvUrls()">Загрузить данные</button>
+<input type="file" id="geojsonFiles" multiple />
+<button onclick="loadGeoJsonFiles()">Загрузить GeoJSON</button>
+<div>
+<label for="csvFilter">Фильтр CSV:</label>
+<select id="csvFilter" onchange="filterMarkers()">
+<option value="all">Все CSV</option>
+</select>
+</div>
+<div>
+<label for="statusFilter">Фильтр статусов:</label>
+<select id="statusFilter" onchange="filterMarkers()">
+<option value="all">Все статусы</option>
+</select>
+</div>
+</div>
+<div id="map"></div>
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.1/leaflet.markercluster.js"></script>
+<script>
+       var map = L.map('map').setView([55.751244, 37.618423], 10); // Center on Moscow
+       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+           maxZoom: 19
+       }).addTo(map);
+       var markersCluster = L.markerClusterGroup({
+           iconCreateFunction: function(cluster) {
+              var childCount = cluster.getChildCount();
+              var c = ' marker-cluster-';
+              if (childCount < 10) {
+                 c += 'small';
+              } else if (childCount < 100) {
+                 c += 'medium';
+              } else {
+                 c += 'large';
+              }
+              return new L.DivIcon({
+                 html: '<div><span>' + childCount + '</span></div>',
+                 className: 'leaflet-markercluster-icon' + c,
+                 iconSize: new L.Point(40, 40)
+              });
+          }
+       });
+       map.addLayer(markersCluster);
+       function addGeoJsonLayer(geoJsonData, color, dashArray) {
+           L.geoJSON(geoJsonData, {
+               style: {
+                   color: color,
+                   weight: 3,
+                   dashArray: dashArray || null
+               }
+           }).addTo(map);
+       }
+       function loadGeoJsonFiles() {
+           var files = document.getElementById('geojsonFiles').files;
+           if (files.length === 0) {
+               alert('Пожалуйста, выберите хотя бы один GeoJSON файл.');
+               return;
+           }
+           var colors = [
+               'blue', '#008080', '#4682b4', 'green', 'yellow',
+               'orange', 'brown', '#4caf50', 'red', '#ff69b4', 'gray',
+               'red', 'yellow', 'purple', '#006400', '#87ceeb', '#87ceeb'
+           ];
+           for (var i = 0; i < files.length; i++) {
+               (function(file, color) {
+                   var reader = new FileReader();
+                   reader.onload = function(e) {
+                       var data = JSON.parse(e.target.result);
+                       addGeoJsonLayer(data, color);
+                   };
+                   reader.readAsText(file);
+               })(files[i], colors[i % colors.length]);
+           }
+       }
+       var allMarkers = [];
+       var markersByCsv = {};
+       function loadCsvUrls() {
+           var urls = document.getElementById('csvUrls').value.split(',').map(url => url.trim());
+           if (urls.length === 0) {
+               alert('Пожалуйста, введите хотя бы одну ссылку на CSV-файл.');
+               return;
+           }
+           map.eachLayer(function(layer) {
+               if (layer instanceof L.Marker) {
+                   map.removeLayer(layer);
+               }
+           });
+           markersCluster.clearLayers();
+           allMarkers = [];
+           markersByCsv = {};
+           var statusOptions = new Set();
+           var csvOptions = new Set();
+           var csvNames = [
+               "Обследования", "Демонтажи", "Евромост", "Феникс",
+               "Заявки менеджеров", "ФЗЧ"
+           ];
+           urls.forEach((url, index) => {
+               var csvName = csvNames[index];
+               Papa.parse(url, {
+                   download: true,
+                   header: true,
+                   complete: function(results) {
+                       processCSVData(results.data, csvName);
+                   },
+                   error: function(err) {
+                       console.error("Error parsing CSV: ", err);
+                   }
+               });
+           });
+           function processCSVData(data, csvName) {
+               var colors = ['blue', 'turquoise', 'lightsteelblue', 'green', 'yellow', 'orange', 'brown'];
+               var color = colors[csvNames.indexOf(csvName) % colors.length];
+               data.forEach(function(row) {
+                   var lat = parseFloat(row['Latitude']);
+                   var lng = parseFloat(row['Longitude']);
+                   var status = row['Статус заявки'];
+                   if (status) {
+                       statusOptions.add(status);
+                   }
+                   if (!isNaN(lat) && !isNaN(lng)) {
+                       var popupContent = 'CSV: ' + csvName + '<br>';
+                       for (let i = 0; i < 7; i++) {
+                           popupContent += row[Object.keys(row)[i]] + '<br>';
+                       }
+                       var marker = L.marker([lat, lng]).bindPopup(popupContent);
+                       marker.status = status;
+                       marker.csvName = csvName;
+                       marker.color = color;
+                       markersByCsv[csvName] = markersByCsv[csvName] || [];
+                       markersByCsv[csvName].push(marker);
+                       allMarkers.push(marker);
+                       marker.addTo(markersCluster);
+                   }
+               });
+               updateStatusFilter(Array.from(statusOptions));
+               updateCsvFilter(csvNames);
+               filterMarkers();
+           }
+       }
+       function updateStatusFilter(statusOptions) {
+           var statusFilter = document.getElementById('statusFilter');
+           statusFilter.innerHTML = '<option value="all">Все статусы</option>';
+           statusOptions.forEach(status => {
+               var option = document.createElement('option');
+               option.value = status;
+               option.textContent = status;
+               statusFilter.appendChild(option);
+           });
+       }
+       function updateCsvFilter(csvNames) {
+           var csvFilter = document.getElementById('csvFilter');
+           csvFilter.innerHTML = '<option value="all">Все CSV</option>';
+           csvNames.forEach(name => {
+               var option = document.createElement('option');
+               option.value = name;
+               option.textContent = name;
+               csvFilter.appendChild(option);
+           });
+       }
+       function filterMarkers() {
+           var selectedCsv = document.getElementById('csvFilter').value;
+           var selectedStatus = document.getElementById('statusFilter').value;
+           markersCluster.clearLayers();
+           allMarkers.forEach(marker => {
+               if ((selectedCsv === 'all' || marker.csvName === selectedCsv) &&
+                   (selectedStatus === 'all' || marker.status === selectedStatus)) {
+                   marker.addTo(markersCluster);
+               }
+           });
+       }
+</script>
+</body>
+</html>
